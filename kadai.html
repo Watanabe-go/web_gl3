@@ -71,7 +71,7 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         // レンダラー出力先の HTML 要素の設定 (canvasは自動生成)
         // (Property) .domElement : DOMElement
-        document.getElementById( 'webgl' ).appendChild( renderer.domElement );
+        document.body.appendChild(renderer.domElement);
         // OutlineEffectの適用
         // (Constructor) OutlineEffect( renderer, parameters : Object ) : Effect
         effect = new THREE.OutlineEffect( renderer );
