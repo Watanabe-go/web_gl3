@@ -61,7 +61,7 @@
         renderer.setSize( canvasSizeW, canvasSizeH );
         // 背景の色と透明度の設定
         // (Method) .setClearColor ( color : Color, alpha : Float ) : null
-        renderer.setClearColor( 0x000000, 1.0 );
+        renderer.setClearColor( 0xffffff, 1.0 );
         // シャドウマッピングの設定
         // (Property) .shadowMap.enabled : Boolean
         renderer.shadowMap.enabled = true;
@@ -135,7 +135,7 @@
         camera = new THREE.PerspectiveCamera( 22.9, canvasSizeW / canvasSizeH, 0.1, 20 );
         // OrbitControls を使用するための設定
         // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
-        controls = new THREE.OrbitControls( camera, renderer.domElement );
+        //controls = new THREE.OrbitControls( camera, renderer.domElement );
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
         // (Constructor) PlaneGeometry(width : Float, height : Float, widthSegments : Integer, heightSegments : Integer) : BufferGeometry
