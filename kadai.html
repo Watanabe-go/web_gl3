@@ -2,22 +2,15 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <!-- JavaScriptファイルをダウンロードし、HTMLと同じフォルダに置く -->
-    <!-- ./build/three.js (r131) -->
-    <script src="./three.js"></script>
-    <!-- ./examples/js/shaders/MMDToonShader.js (r131) -->
-    <script src="./MMDToonShader.js"></script>
-    <!-- GitHub https://github.com/takahirox/mmd-parser よりダウンロード -->
-    <script src="./mmdparser.js"></script>
-    <!-- ./examples/js/loaders/TGALoader.js (r131) -->
-    <script src="./TGALoader.js"></script>
-    <!-- ./examples/js/effects/OutlineEffect.js (r131) -->
-    <script src="./OutlineEffect.js"></script>
-    <!-- ./examples/js/loaders/MMDLoader.js (r131) -->
-    <script src="./MMDLoader.js"></script>
-    <!-- OrbitControlsはMMDモデルを表示するのに必須ではないが、マウス操作できるようにするためにOrbitControls.jsを使用する -->
-    <!-- ./examples/js/controls/OrbitControls.js (r131) -->
-    <script src="./OrbitControls.js"></script>
+     <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three/examples/jsm/"
+    }
+}
+</script>
     <title>MMD 3Dモデルの表示</title>
   </head>
   <body>
