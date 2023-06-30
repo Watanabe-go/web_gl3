@@ -1,0 +1,817 @@
+//----------------AltanativeHighLight-----------------//
+//モデラ―専用アニメ調シェーダー
+//このエフェクトはアニメ調に特化したエフェクトです。AltanativeFullを参考にして作成しました。
+
+
+float4 EgColor; 
+float4 SpcColor;
+
+//float ShadingBiasGain : CONTROLOBJECT <string name="(self)"; string item="影傾向強さ";>;
+float ShadingBiasGain : CONTROLOBJECT <string name="(self)"; string item="顔影ON";>;
+float FixNormalBias : CONTROLOBJECT <string name="(self)"; string item="光源法線傾向";>;
+
+// 座法変換行列
+float4x4 WorldViewProjMatrix		: WORLDVIEWPROJECTION;
+float4x4 WorldViewMatrix			: WORLDVIEW;
+float4x4 WorldMatrix				: WORLD;
+float4x4 ViewMatrix					: VIEW;
+float4x4 LightWorldViewProjMatrix	: WORLDVIEWPROJECTION < string Object = "Light"; >;
+
+float3   CameraPosition	: POSITION  < string Object = "Camera"; >;
+
+// マテリアル色
+float4   MaterialDiffuse   : DIFFUSE  < string Object = "Geometry"; >;
+float3   MaterialAmbient   : AMBIENT  < string Object = "Geometry"; >;
+float3   MaterialEmmisive  : EMISSIVE < string Object = "Geometry"; >;
+//float3   MaterialSpecular  = ( 1 , 1 , 1 ) ;
+float	 SpecularPower	   =  SPECULAR_POWER;   //20000 ;                          //スペキュラーの反射光の大きさ           
+
+float3   MaterialToon	  : TOONCOLOR;
+float4   EdgeColor		 : EDGECOLOR;
+float4   GroundShadowColor : GROUNDSHADOWCOLOR;
+
+
+
+float4x4		LightControl			: VIEW < string Object = "Light"; >;
+//static float3   LightDirection			= mul(float3(0, 0, 1), (float3x3)LightControl);
+float3			LightDirection			: DIRECTION < string Object = "Light"; >;
+float3			DiffuseLightColor		= ( 10.0 , 10.0 , 10.0 );
+static float3	LightAmbient			= saturate(DiffuseLightColor / 10.0f);
+//float3			LightAmbient			: AMBIENT   < string Object = "Light"; >;
+
+
+//反射光コントロール
+float4x4		SpecularLightControlObj	: VIEW < string Object = "Light"; >; //反射光コントロールオブジェクトを指定
+static float3   SpecularLightDirection	= mul(float3(0, 0, 1), (float3x3)SpecularLightControlObj);
+float4			SpecularLightColor      = ( 5.0 , 5.0  ,5.0 , 5.0) ;              //反射光の色を変えることができる
+static float4	LightSpecular			= saturate(SpecularLightColor / 10.0f);
+
+// ライト色
+float3   LightDiffuse	  : DIFFUSE   < string Object = "Light"; >;
+static float4 DiffuseColor  = MaterialDiffuse  * float4(LightDiffuse, 1.0f);
+static float3 AmbientColor  = MaterialAmbient  * LightAmbient + MaterialEmmisive;
+static float4 SpecularColor = LightSpecular ;     
+
+// テクスチャ材質モーフ値
+float4   TextureAddValue   : ADDINGTEXTURE;
+float4   TextureMulValue   : MULTIPLYINGTEXTURE;
+float4   SphereAddValue	: ADDINGSPHERETEXTURE;
+float4   SphereMulValue	: MULTIPLYINGSPHERETEXTURE;
+
+bool	 use_subtexture;	// サブテクスチャフラグ
+
+bool	 parthf;   // パースペクティブフラグ
+bool	 transp;   // 半透明フラグ
+bool	 spadd;	// スフィアマップ加算合成フラグ
+#define SKII1	1500
+#define SKII2	8000
+#define Toon	 3
+
+
+//対象モデルファイル指定
+    #ifdef Model_Path
+		float PARAM1 : CONTROLOBJECT < string name = Model_Path ; string item = SPECULAR_CONTROL; >;
+		
+	#endif
+
+
+
+//-----------テクスチャの設定--------------------//
+
+// シェーディングのヒント用テクスチャ
+
+texture2D ThresholdTexture : TEXTURE <
+	string ResourceName = TEXTURE_THRESHOLD;
+>;
+sampler2D ThresholdTextureSampler = sampler_state {
+	texture = <ThresholdTexture>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = LINEAR;
+};
+
+// カラーランプ用のルックアップテーブルテクスチャ
+texture LutTexture: TEXTURE <
+	string ResourceName = TEXTURE_LOOKUPTABLE;
+	int MipLevels = 0;
+>;
+sampler LutSampler = sampler_state {
+	texture = <LutTexture>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = NONE;
+	ADDRESSU  = CLAMP;
+	ADDRESSV  = CLAMP;
+};
+
+
+//スペキュラーコントロールテクスチャ（グレースケール）
+#ifdef USE_SPECULARCTRL_TEXTURE
+texture2D SpecularCTRLTexture : TEXTURE <
+	string ResourceName = TEXTURE_SP_CONTROL;
+>;
+sampler2D SpecCTRLSampler = sampler_state {
+	texture = <ThresholdTexture>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = NONE;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+};
+#endif
+
+
+// 影用テクスチャ
+
+#ifdef TEXTURE_SHADOW
+texture2D ShadowTexture : TEXTURE <
+	string ResourceName = TEXTURE_SHADOW;
+>;
+sampler2D ShadowTextureSampler = sampler_state {
+	texture = <ShadowTexture>;
+	MINFILTER = ANISOTROPIC;
+	MAGFILTER = ANISOTROPIC;
+	MIPFILTER = LINEAR;
+	MaxAnisotropy = 16 ;
+};
+
+#else
+texture2D ShadowTexture : MATERIALTEXTURE;
+#endif
+
+// 影の重み付け用テクスチャ
+#ifdef TEXTURE_SHADOW_BIAS
+texture2D ShadowBiasTexture : TEXTURE <
+	string ResourceName = TEXTURE_SHADOW_BIAS;
+>;
+sampler2D ShadowBiasSampler = sampler_state {
+	texture = <ShadowBiasTexture>;
+	MINFILTER = ANISOTROPIC;
+	MAGFILTER = ANISOTROPIC;
+	MIPFILTER = LINEAR;
+	MaxAnisotropy = 16 ;
+};
+#endif
+
+// 陰度調節マスク
+texture2D ShadowBiasMaskTexture: TEXTURE <
+	string ResourceName = TEXTURE_SHADOW_BIAS_MASK;
+	int MipLevels = 0;
+>;
+sampler2D ShadowBiasMaskSampler = sampler_state {
+	texture = <ShadowBiasMaskTexture>;
+	MINFILTER = ANISOTROPIC;
+	MAGFILTER = ANISOTROPIC;
+	MIPFILTER = LINEAR;
+	MaxAnisotropy = 16 ;
+};
+
+// オブジェクトのテクスチャ
+texture ObjectTexture: MATERIALTEXTURE;
+sampler ObjTexSampler = sampler_state {
+	texture = <ObjectTexture>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = LINEAR;
+	ADDRESSU  = WRAP;
+	ADDRESSV  = WRAP;
+};
+
+// スフィアマップのテクスチャ（マスクテクスチャ使用可能）
+texture ObjectSphereMap: MATERIALSPHEREMAP;
+sampler ObjSphareSampler = sampler_state {
+	texture = <ObjectSphereMap>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = LINEAR;
+	ADDRESSU  = WRAP;
+	ADDRESSV  = WRAP;
+};
+
+//2枚目のスフィアマップ（このシェーダーで指定するスフィアマップ。マスクテクスチャは使えない）
+#ifdef SECONDARY_SPHERETEX
+texture SecondarySphereMap :TEXTURE<
+	string ResourceName = TEXTURE_SECONDARY_SPHERETEX;
+	int MipLevels = 0;
+>;
+sampler SecondarySpSampler = sampler_state{
+	TextureAddValue = <SecondarySphereTex>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = NONE;
+	ADDRESSU  = CLAMP;
+	ADDRESSV  = CLAMP;
+
+};
+#endif
+
+// トゥーンマップのテクスチャ
+texture ObjectToonTexture: MATERIALTOONTEXTURE;
+sampler ObjToonSampler = sampler_state {
+	texture = <ObjectToonTexture>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = NONE;
+	ADDRESSU  = CLAMP;
+	ADDRESSV  = CLAMP;
+};
+
+#ifdef ENABLE_DEEP_SHADOW
+// 2号影の色
+texture DeepShadowColorTexture: TEXTURE <
+	string ResourceName = TEXTURE_DEEP_SHADOW_COLOR;
+	int MipLevels = 0;
+>;
+sampler DeepShadowColorSampler = sampler_state {
+	texture = <DeepShadowColorTexture>;
+	FILTER = ANISOTROPIC;
+	ADDRESSU  = CLAMP;
+	ADDRESSV  = CLAMP;
+	MaxAnisotropy = 16;
+};
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// 輪郭描画
+
+// 頂点シェーダ
+float4 ColorRender_VS(float4 Pos : POSITION) : POSITION 
+{
+	// カメラ視点のワールドビュー射影変換
+	return mul( Pos, WorldViewProjMatrix );
+}
+
+// ピクセルシェーダ
+float4 ColorRender_PS() : COLOR
+{
+	// 輪郭色で塗りつぶし
+	return EdgeColor;
+}
+// 輪郭描画用テクニック
+technique EdgeTec < string MMDPass = "edge"; > {
+	pass DrawEdge {
+		VertexShader = compile vs_2_0 ColorRender_VS();
+		PixelShader  = compile ps_2_0 ColorRender_PS();
+	}
+}
+///////////////////////////////////////////////////////////////////////////////////////////////
+// 影（セルフシャドウOFF）描画
+
+// 頂点シェーダ
+float4 Shadow_VS(float4 Pos : POSITION) : POSITION
+{
+	// カメラ視点のワールドビュー射影変換
+	return mul( Pos, WorldViewProjMatrix );
+}
+
+// ピクセルシェーダ
+float4 Shadow_PS() : COLOR
+{
+	// 地面影色で塗りつぶし
+	return GroundShadowColor;
+}
+
+// 影描画用テクニック
+technique ShadowTec < string MMDPass = "shadow"; > {
+	pass DrawShadow {
+		VertexShader = compile vs_2_0 Shadow_VS();
+		PixelShader  = compile ps_2_0 Shadow_PS();
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// オブジェクト描画（セルフシャドウOFF）
+
+struct VS_OUTPUT {
+	float4 Pos		: POSITION;		// 射影変換座標
+	float2 Tex		: TEXCOORD1;	// テクスチャ
+	float2 AddUv1   : TEXCOORD2;	// 追加UV1
+	float2 AddUv2   : TEXCOORD3;	// 追加UV2
+	float2 AddUv3   : TEXCOORD4;	// 追加UV3
+	float2 AddUv4   : TEXCOORD5;	// 追加UV4
+	float3 Normal	: TEXCOORD6;	// 法線
+	float3 Eye		: TEXCOORD7;	// カメラとの相対位置
+	float2 SpTex	: TEXCOORD8;	// スフィアマップテクスチャ座標
+	float4 Color	: COLOR0;		// ディフューズ色
+};
+// 頂点シェーダ
+VS_OUTPUT Basic_VS(float4 Pos : POSITION, float3 Normal : NORMAL, float2 Tex : TEXCOORD0, float4 AddUv1 : TEXCOORD1, float4 AddUv2 : TEXCOORD2, float4 AddUv3 : TEXCOORD3, float4 AddUv4 : TEXCOORD4, uniform bool useTexture, uniform bool useSphereMap, uniform bool useToon)
+{
+	VS_OUTPUT Out = (VS_OUTPUT)0;
+	
+	// カメラ視点のワールドビュー射影変換
+	Out.Pos = mul( Pos, WorldViewProjMatrix );
+	
+	// カメラとの相対位置
+	Out.Eye = CameraPosition - mul( Pos.xyz, (float3x3)WorldMatrix );
+	// 頂点法線
+	Out.Normal = normalize( mul( Normal, (float3x3)WorldMatrix ) );
+	
+	// ディフューズ色＋アンビエント色 計算
+	Out.Color.rgb = AmbientColor;
+	if ( !useToon ) {
+		Out.Color.rgb += max(0,dot( Out.Normal, -LightDirection )) * DiffuseColor.rgb;
+	}
+	Out.Color.a = DiffuseColor.a;
+	Out.Color = saturate( Out.Color );
+// テクスチャ座標
+	Out.Tex = Tex;
+	// 追加UV
+	Out.AddUv1 = AddUv1;
+	Out.AddUv2 = AddUv2;
+	Out.AddUv3 = AddUv3;
+	Out.AddUv4 = AddUv4;
+	
+	if ( useSphereMap ) {
+		if ( use_subtexture ) {
+			// PMXサブテクスチャ座標
+			Out.SpTex = AddUv1;
+		} else {
+			// スフィアマップテクスチャ座標
+			float2 NormalWV = mul( Out.Normal, (float3x3)ViewMatrix );
+			Out.SpTex.x = NormalWV.x * 0.5f + 0.5f;
+			Out.SpTex.y = NormalWV.y * -0.5f + 0.5f;
+		}
+	}
+	
+	#ifdef SECONDARY_SPHERETEX
+		if ( use_subtexture ) {
+			// PMXサブテクスチャ座標
+			Out.SpTex = AddUv2;
+		} else {
+			// スフィアマップテクスチャ座標
+			float2 NormalWV = mul( Out.Normal, (float3x3)ViewMatrix );
+			Out.SpTex.x = NormalWV.x * 0.5f + 0.5f;
+			Out.SpTex.y = NormalWV.y * -0.5f + 0.5f;
+			}
+	#endif
+	return Out;
+}
+// ピクセルシェーダ
+float4 Basic_PS(VS_OUTPUT IN, uniform bool useTexture, uniform bool useSphereMap, uniform bool useToon) : COLOR0
+{
+	// シェーダー用パラメーター
+	float3 L = -normalize(LightDirection);
+	float3 N = normalize(IN.Normal);
+	float3 V = normalize(IN.Eye);
+	float3 SL = -normalize(SpecularLightDirection);
+
+	// ------------------------------------------------------------
+	// 陰影計算(Lambert)
+	// ------------------------------------------------------------
+	float d = max(0.0f, dot(N, L));
+
+	// 日向の色
+	float4 Color = IN.Color;
+
+	// 影の色
+	float3 ShadowColor = tex2D(ShadowTextureSampler, IN.Tex).rgb;
+
+	#ifdef ENABLE_DEEP_SHADOW
+	float3 DeepShadowColor = tex2D(DeepShadowColorSampler, IN.Tex).rgb;
+	#endif
+	// マスクテクスチャ参照
+	float4 ShadeBias = tex2D(ShadowBiasMaskSampler, IN.Tex);
+
+	if ( useTexture ) {
+		// テクスチャ適用
+		float4 TexColor = tex2D( ObjTexSampler, IN.Tex );
+		// テクスチャ材質モーフ数
+		TexColor.rgb = lerp(1, TexColor * TextureMulValue + TextureAddValue, TextureMulValue.a + TextureAddValue.a);
+		Color *= TexColor;
+	}
+	if ( useSphereMap ) {
+		// スフィアマップ適用
+		float4 TexColor = tex2D(ObjSphareSampler,IN.SpTex);
+		// スフィアテクスチャ材質モーフ数
+		TexColor.rgb = lerp(spadd?0:1, TexColor * SphereMulValue + SphereAddValue, SphereMulValue.a + SphereAddValue.a);
+		float3 TempColor;
+		if ( spadd ) {
+			TempColor.rgb = Color.rgb + TexColor.rgb;
+		} else {
+			TempColor.rgb = Color.rgb * TexColor.rgb;
+		}
+		Color.rgb = lerp(Color.rgb, TempColor.rgb, ShadeBias.a);
+		Color.a *= TexColor.a;
+		//ShadowColor.rgb = lerp(ShadowColor.rgb, TempColor.rgb, ShadeBias.a);
+	}
+	#ifdef SECONDARY_SPHERETEX
+		// スフィアマップ適用
+		float4 TexColor = tex2D(SecondarySpSampler,IN.SpTex);
+		float3 TempColor;
+
+		#ifdef Add_SPHERE
+			TempColor.rgb = Color.rgb + TexColor.rgb;
+			ShadowColor.rgb += TexColor.rgb;
+			d += max(max(TexColor.r, TexColor.g),TexColor.b);
+		#else
+			TempColor.rgb = Color.rgb * TexColor.rgb;
+			ShadowColor.rgb *= TexColor.rgb;
+			d *= max(max(TexColor.r, TexColor.g),TexColor.b);
+		#endif	
+	#endif
+
+	#ifdef ENABLE_DEEP_SHADOW
+			DeepShadowColor.rgb = lerp(DeepShadowColor.rgb, TempColor.rgb, ShadeBias.a);
+	#endif
+	// ------------------------------------------------------------
+	// スペキュラ計算
+	// ------------------------------------------------------------
+	float3 HalfVector = normalize( V + SL );
+
+	#ifdef USE_SPECULARCTRL_TEXTURE
+		float3 SpecPow = tex2D(SpecCTRLSampler, IN.Tex).rgb; 
+		SpecularPower*=1;		//SpecPow;								//グレースケールなのでとりあえずRGBどれか一つのチャンネル使う。
+		float Specular = pow( max(0.0f, dot( HalfVector, N )),SpecularPower );
+		
+    #else
+		float Specular = pow( max(0.0f, dot( HalfVector, N )), SpecularPower);
+	#endif
+
+	float4			SpecularLightColor      = ( 5.0 , 5.0  ,5.0 , 5.0) ;              //反射光の色を変えることができる
+	SpecularLightColor *= ShadeBias.b;
+	float4	LightSpecular			= saturate(SpecularLightColor / 10.0f);
+	float4 SpecularColor = LightSpecular ;
+
+	//Specular *= ShadeBias.b;
+
+	// ------------------------------------------------------------
+	// 追加陰度計算
+	// ------------------------------------------------------------
+	//d = saturate(d * ShadeBias.r);
+	// ------------------------------------------------------------
+	// 影のなりやすさ処理
+	// ------------------------------------------------------------
+	#ifdef TEXTURE_SHADOW_BIAS
+		float ShadingBias = tex2D(ShadowBiasSampler, IN.Tex).r * 2 - 1; // -1 ～ +1
+		d += ShadingBias * (1 - ShadingBiasGain);
+	#endif
+
+	#ifdef TEXTURE_SHADOW_BIAS_MASK
+		float ShadingBias = tex2D(ShadowBiasMaskSampler, IN.Tex).g * 2 - 1; // -1 ～ +1
+		d += ShadingBias * (1 - ShadingBiasGain);
+	#endif
+	// ------------------------------------------------------------
+	// シェードマップの適用
+	// ------------------------------------------------------------
+	// ここでdは0以下や1以上の可能性があるため、神経質にsaturateしておく。
+	float4 Threshold = tex2D( ThresholdTextureSampler, float2(saturate(d), 0));
+
+	// ------------------------------------------------------------
+	// 最終合成
+	// ------------------------------------------------------------
+	// スペキュラ
+	float3 Lamp = tex2D(LutSampler, float2(saturate(Specular), 0.625f)).rgb;   //LAMPテクスチャのカラーランプ指定値（0.125f,0.375f,0.625f）
+	Color.rgb = lerp(Color.rgb, Color.rgb + SpecularColor.rgb, Lamp); // 日向のみ
+
+	Lamp = tex2D(LutSampler, float2(d, 0.125f));
+	//Color.rgb = lerp(ShadowColor, Color.rgb, Lamp);
+	Color.rgb = lerp(ShadowColor.rgb, Color.rgb, Threshold.rgb);
+
+#ifdef ENABLE_DEEP_SHADOW
+	// 2号影
+	//Lamp = tex2D(LutSampler, float2(ShadeBias.g, 0.375f));
+	//Color.rgb = lerp(DeepShadowColor, Color.rgb, Lamp);
+	Color.rgb = lerp(DeepShadowColor.rgb, Color.rgb, Threshold.rgb);
+#endif
+
+	return Color;
+}
+
+// オブジェクト描画用テクニック（アクセサリ用）
+// オブジェクト描画用テクニック（PMDモデル用）
+technique MainTec4 < string MMDPass = "object"; bool UseTexture = false; bool UseSphereMap = false; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 Basic_VS(false, false, true);
+		PixelShader  = compile ps_3_0 Basic_PS(false, false, true);
+	}
+}
+
+technique MainTec5 < string MMDPass = "object"; bool UseTexture = true; bool UseSphereMap = false; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 Basic_VS(true, false, true);
+		PixelShader  = compile ps_3_0 Basic_PS(true, false, true);
+	}
+}
+
+technique MainTec6 < string MMDPass = "object"; bool UseTexture = false; bool UseSphereMap = true; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 Basic_VS(false, true, true);
+		PixelShader  = compile ps_3_0 Basic_PS(false, true, true);
+	}
+}
+
+technique MainTec7 < string MMDPass = "object"; bool UseTexture = true; bool UseSphereMap = true; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 Basic_VS(true, true, true);
+		PixelShader  = compile ps_3_0 Basic_PS(true, true, true);
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// セルフシャドウ用Z値プロット
+
+struct VS_ZValuePlot_OUTPUT {
+	float4 Pos : POSITION;			  // 射影変換座標
+	float4 ShadowMapTex : TEXCOORD0;	// Zバッファテクスチャ
+};
+
+// 頂点シェーダ
+VS_ZValuePlot_OUTPUT ZValuePlot_VS( float4 Pos : POSITION )
+{
+	VS_ZValuePlot_OUTPUT Out = (VS_ZValuePlot_OUTPUT)0;
+
+	// ライトの目線によるワールドビュー射影変換をする
+	Out.Pos = mul( Pos, LightWorldViewProjMatrix );
+
+	// テクスチャ座標を頂点に合わせる
+	Out.ShadowMapTex = Out.Pos;
+
+	return Out;
+}
+
+// ピクセルシェーダ
+float4 ZValuePlot_PS( float4 ShadowMapTex : TEXCOORD0 ) : COLOR
+{
+	// R色成分にZ値を記録する
+	return float4(ShadowMapTex.z/ShadowMapTex.w,0,0,1);
+}
+
+// Z値プロット用テクニック
+technique ZplotTec < string MMDPass = "zplot"; > {
+	pass ZValuePlot {
+		AlphaBlendEnable = FALSE;
+		VertexShader = compile vs_2_0 ZValuePlot_VS();
+		PixelShader  = compile ps_2_0 ZValuePlot_PS();
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// オブジェクト描画（セルフシャドウON）
+
+// シャドウバッファのサンプラ。"register(s0)"なのはMMDがs0を使っているから
+sampler DefSampler : register(s0);
+
+struct BufferShadow_OUTPUT {
+	float4 Pos	    : POSITION;	 // 射影変換座標
+	float4 ZCalcTex : TEXCOORD0;	// Z値
+	float2 Tex	    : TEXCOORD1;	// テクスチャ
+	float2 AddUv1   : TEXCOORD2;	// 追加UV1
+	float2 AddUv2   : TEXCOORD3;	// 追加UV2
+	float2 AddUv3   : TEXCOORD4;	// 追加UV3
+	float2 AddUv4   : TEXCOORD5;	// 追加UV4
+	float3 Normal   : TEXCOORD6;	// 法線
+	float3 Eye	    : TEXCOORD7;	// カメラとの相対位置
+	float2 SpTex	: TEXCOORD8;	// スフィアマップテクスチャ座標
+	float4 Color	: COLOR0;		// ディフューズ色
+};
+
+// 頂点シェーダ
+BufferShadow_OUTPUT BufferShadow_VS(float4 Pos : POSITION, float3 Normal : NORMAL, float2 Tex : TEXCOORD0, float4 AddUv1 : TEXCOORD1, float4 AddUv2 : TEXCOORD2, float4 AddUv3 : TEXCOORD3, float4 AddUv4 : TEXCOORD4, uniform bool useTexture, uniform bool useSphereMap, uniform bool useToon)
+{
+	BufferShadow_OUTPUT Out = (BufferShadow_OUTPUT)0;
+
+	// カメラ視点のワールドビュー射影変換
+	Out.Pos = mul( Pos, WorldViewProjMatrix );
+	
+	// カメラとの相対位置
+	Out.Eye = CameraPosition - mul( Pos.xyz, (float3x3)WorldMatrix );
+	// 頂点法線
+	Out.Normal = normalize( mul( Normal, (float3x3)WorldMatrix ) );
+	// ライト視点によるワールドビュー射影変換
+	Out.ZCalcTex = mul( Pos, LightWorldViewProjMatrix );
+	
+	// ディフューズ色＋アンビエント色 計算
+	Out.Color.rgb = AmbientColor;
+	if ( !useToon ) {
+		Out.Color.rgb += max(0,dot( Out.Normal, -LightDirection )) * DiffuseColor.rgb;
+	}
+	Out.Color.a = DiffuseColor.a;
+	Out.Color = saturate( Out.Color );
+	
+	// テクスチャ座標
+	Out.Tex = Tex;
+	// 追加UV
+	Out.AddUv1 = AddUv1;
+	Out.AddUv2 = AddUv2;
+	Out.AddUv3 = AddUv3;
+	Out.AddUv4 = AddUv4;
+
+if ( useSphereMap ) {
+		if ( use_subtexture ) {
+			// PMXサブテクスチャ座標
+			Out.SpTex = AddUv1;
+		} else {
+			// スフィアマップテクスチャ座標
+			float2 NormalWV = mul( Out.Normal, (float3x3)ViewMatrix );
+			Out.SpTex.x = NormalWV.x * 0.5f + 0.5f;
+			Out.SpTex.y = NormalWV.y * -0.5f + 0.5f;
+		}
+	}
+	
+	#ifdef SECONDARY_SPHERETEX
+		if ( use_subtexture ) {
+			// PMXサブテクスチャ座標
+			Out.SpTex = AddUv2;
+		} else {
+			// スフィアマップテクスチャ座標
+			float2 NormalWV = mul( Out.Normal, (float3x3)ViewMatrix );
+			Out.SpTex.x = NormalWV.x * 0.5f + 0.5f;
+			Out.SpTex.y = NormalWV.y * -0.5f + 0.5f;
+			}
+	#endif
+	return Out;
+}
+// ピクセルシェーダ
+float4 BufferShadow_PS(BufferShadow_OUTPUT IN, uniform bool useTexture, uniform bool useSphereMap, uniform bool useToon) : COLOR
+{
+	// シェーダー用パラメーター
+	float3 L = -normalize(LightDirection);
+	float3 N = normalize(IN.Normal);
+	float3 V = normalize(IN.Eye);
+	float3 SL = -normalize(SpecularLightDirection);
+
+	// ------------------------------------------------------------
+	// 陰影計算(Lambert)
+	// ------------------------------------------------------------
+	float d = max(0.0f, dot(N, L));
+
+	// 日向の色
+	float4 Color = IN.Color;
+
+	// 影の色
+	float3 ShadowColor = tex2D(ShadowTextureSampler, IN.Tex).rgb;
+
+	#ifdef ENABLE_DEEP_SHADOW
+	float3 DeepShadowColor = tex2D(DeepShadowColorSampler, IN.Tex).rgb;
+	#endif
+	// マスクテクスチャ参照
+	float4 ShadeBias = tex2D(ShadowBiasMaskSampler, IN.Tex);
+
+	if ( useTexture ) {
+		// テクスチャ適用
+		float4 TexColor = tex2D( ObjTexSampler, IN.Tex );
+		// テクスチャ材質モーフ数
+		TexColor.rgb = lerp(1, TexColor * TextureMulValue + TextureAddValue, TextureMulValue.a + TextureAddValue.a);
+		Color *= TexColor;
+	}
+	if ( useSphereMap ) {
+		// スフィアマップ適用
+		float4 TexColor = tex2D(ObjSphareSampler,IN.SpTex);
+		// スフィアテクスチャ材質モーフ数
+		TexColor.rgb = lerp(spadd?0:1, TexColor * SphereMulValue + SphereAddValue, SphereMulValue.a + SphereAddValue.a);
+		float3 TempColor;
+		if ( spadd ) {
+			TempColor.rgb = Color.rgb + TexColor.rgb;
+		} else {
+			TempColor.rgb = Color.rgb * TexColor.rgb;
+		}
+		Color.rgb = lerp(Color.rgb, TempColor.rgb, ShadeBias.a);
+		Color.a *= TexColor.a;
+		//ShadowColor.rgb = lerp(ShadowColor.rgb, TempColor.rgb, ShadeBias.a);
+	}
+	#ifdef SECONDARY_SPHERETEX
+		// スフィアマップ適用
+		float4 TexColor = tex2D(SecondarySpSampler,IN.SpTex);
+		float3 TempColor;
+
+		#ifdef Add_SPHERE
+			TempColor.rgb = Color.rgb + TexColor.rgb;
+			ShadowColor.rgb += TexColor.rgb;
+			d += max(max(TexColor.r, TexColor.g),TexColor.b);
+		#else
+			TempColor.rgb = Color.rgb * TexColor.rgb;
+			ShadowColor.rgb *= TexColor.rgb;
+			d *= max(max(TexColor.r, TexColor.g),TexColor.b);
+		#endif	
+	#endif
+
+	#ifdef ENABLE_DEEP_SHADOW
+			DeepShadowColor.rgb = lerp(DeepShadowColor.rgb, TempColor.rgb, ShadeBias.a);
+	#endif
+	// ------------------------------------------------------------
+	// スペキュラ計算
+	// ------------------------------------------------------------
+	float3 HalfVector = normalize( V + SL );
+
+	#ifdef USE_SPECULARCTRL_TEXTURE
+		float3 SpecPow = tex2D(SpecCTRLSampler, IN.Tex).rgb; 
+		SpecularPower*=1;		//SpecPow;								//グレースケールなのでとりあえずRGBどれか一つのチャンネル使う。
+		float Specular = pow( max(0.0f, dot( HalfVector, N )),SpecularPower );
+		
+    #else
+		float Specular = pow( max(0.0f, dot( HalfVector, N )), SpecularPower);
+	#endif
+
+	float4			SpecularLightColor      = ( 5.0 , 5.0  ,5.0 , 5.0) ;              //反射光の色を変えることができる
+	SpecularLightColor *= ShadeBias.b;
+	float4	LightSpecular			= saturate(SpecularLightColor / 10.0f);
+	float4 SpecularColor = LightSpecular ;
+
+	//Specular *= ShadeBias.b;
+
+	// ------------------------------------------------------------
+	// 追加陰度計算
+	// ------------------------------------------------------------
+	//d = saturate(d * ShadeBias.r);
+	// ------------------------------------------------------------
+	// 影のなりやすさ処理
+	// ------------------------------------------------------------
+	#ifdef TEXTURE_SHADOW_BIAS
+		float ShadingBias = tex2D(ShadowBiasSampler, IN.Tex).r * 2 - 1; // -1 ～ +1
+		d += ShadingBias * (1 - ShadingBiasGain);
+	#endif
+
+	#ifdef TEXTURE_SHADOW_BIAS_MASK
+		float ShadingBias = tex2D(ShadowBiasMaskSampler, IN.Tex).g * 2 - 1; // -1 ～ +1
+		d += ShadingBias * (1 - ShadingBiasGain);
+	#endif
+	// ------------------------------------------------------------
+	// セルフシャドウ計算
+	// ------------------------------------------------------------
+	// テクスチャ座標に変換
+	IN.ZCalcTex /= IN.ZCalcTex.w;
+	float2 TransTexCoord;
+	TransTexCoord.x = (1.0f + IN.ZCalcTex.x)*0.5f;
+	TransTexCoord.y = (1.0f - IN.ZCalcTex.y)*0.5f;
+
+	if( !any( saturate(TransTexCoord) != TransTexCoord ) ) {
+		float comp;
+		if(parthf) {
+			// セルフシャドウ mode2
+			comp=1-saturate(max(IN.ZCalcTex.z-tex2D(DefSampler,TransTexCoord).r , 0.0f)*SKII2*TransTexCoord.y-0.3f);
+		} else {
+			// セルフシャドウ mode1
+			comp=1-saturate(max(IN.ZCalcTex.z-tex2D(DefSampler,TransTexCoord).r , 0.0f)*SKII1-0.3f);
+		}
+		d *= comp;
+	}
+
+	// ------------------------------------------------------------
+	// シェードマップの適用
+	// ------------------------------------------------------------
+	// ここでdは0以下や1以上の可能性があるため、神経質にsaturateしておく。
+	float4 Threshold = tex2D( ThresholdTextureSampler, float2(saturate(d), 0));
+
+	// ------------------------------------------------------------
+	// 最終合成
+	// ------------------------------------------------------------
+	// スペキュラ
+	float3 Lamp = tex2D(LutSampler, float2(saturate(Specular), 0.625f)).rgb;
+	Color.rgb = lerp(Color.rgb, Color.rgb + SpecularColor.rgb, Lamp); // 日向のみ
+
+	Lamp = tex2D(LutSampler, float2(d, 0.125f));
+	//Color.rgb = lerp(ShadowColor, Color.rgb, Lamp);
+	Color.rgb = lerp(ShadowColor.rgb, Color.rgb, Threshold.rgb);
+
+#ifdef ENABLE_DEEP_SHADOW
+	// 2号影
+	//Lamp = tex2D(LutSampler, float2(ShadeBias.g, 0.375f));
+	//Color.rgb = lerp(DeepShadowColor, Color.rgb, Lamp);
+	Color.rgb = lerp(DeepShadowColor.rgb, Color.rgb, Threshold.rgb);
+#endif
+
+	// ------------------------------------------------------------
+	// 透明化
+	// ------------------------------------------------------------
+	if ( transp ) Color.a *= 0.5f;
+
+	return Color;
+}
+
+// オブジェクト描画用テクニック（PMDモデル用）
+technique MainTecBS4  < string MMDPass = "object_ss"; bool UseTexture = false; bool UseSphereMap = false; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 BufferShadow_VS(false, false, true);
+		PixelShader  = compile ps_3_0 BufferShadow_PS(false, false, true);
+	}
+}
+
+technique MainTecBS5  < string MMDPass = "object_ss"; bool UseTexture = true; bool UseSphereMap = false; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 BufferShadow_VS(true, false, true);
+		PixelShader  = compile ps_3_0 BufferShadow_PS(true, false, true);
+	}
+}
+
+technique MainTecBS6  < string MMDPass = "object_ss"; bool UseTexture = false; bool UseSphereMap = true; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 BufferShadow_VS(false, true, true);
+		PixelShader  = compile ps_3_0 BufferShadow_PS(false, true, true);
+	}
+}
+
+technique MainTecBS7  < string MMDPass = "object_ss"; bool UseTexture = true; bool UseSphereMap = true; bool UseToon = true; > {
+	pass DrawObject {
+		VertexShader = compile vs_3_0 BufferShadow_VS(true, true, true);
+		PixelShader  = compile ps_3_0 BufferShadow_PS(true, true, true);
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////

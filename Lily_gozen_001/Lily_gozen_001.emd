@@ -1,0 +1,12 @@
+[Info]
+Version = 3
+
+[Effect]
+Obj = none
+Obj[0] = Lily_gozen_001_face.fx
+Obj[1] = Lily_gozen_001_tere.fx
+Obj[2] = Lily_gozen_001_cloth.fx
+Obj[3] = Lily_gozen_001_cloth.fx
+Obj[4] = Lily_gozen_001_skin.fx
+Obj[5] = Lily_gozen_001_hair.fx
+
