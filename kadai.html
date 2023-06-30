@@ -135,7 +135,7 @@
         camera = new THREE.PerspectiveCamera( 22.9, canvasSizeW / canvasSizeH, 0.1, 20 );
         // OrbitControls を使用するための設定
         // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
-        //controls = new THREE.OrbitControls( camera, renderer.domElement );
+        const controls = new THREE.OrbitControls(camera, document.body); 
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
         // (Constructor) PlaneGeometry(width : Float, height : Float, widthSegments : Integer, heightSegments : Integer) : BufferGeometry
