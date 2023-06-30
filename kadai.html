@@ -71,7 +71,7 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         // レンダラー出力先の HTML 要素の設定 (canvasは自動生成)
         // (Property) .domElement : DOMElement
-        document.body.appendChild(renderer.domElement);
+        document.getElementById( 'webgl' ).appendChild( renderer.domElement );
         // OutlineEffectの適用
         // (Constructor) OutlineEffect( renderer, parameters : Object ) : Effect
         effect = new THREE.OutlineEffect( renderer );
@@ -135,7 +135,7 @@
         camera = new THREE.PerspectiveCamera( 22.9, canvasSizeW / canvasSizeH, 0.1, 20 );
         // OrbitControls を使用するための設定
         // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
-        const controls = new THREE.OrbitControls(camera, document.body); 
+        //controls = new THREE.OrbitControls(camera, document.body); 
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
         // (Constructor) PlaneGeometry(width : Float, height : Float, widthSegments : Integer, heightSegments : Integer) : BufferGeometry
