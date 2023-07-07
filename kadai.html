@@ -12,8 +12,7 @@
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/effects/OutlineEffect.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/CCDIKSolver.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/MMDPhysics.js"></script>
-     <script src="https://cdn.jsdelivr.net/npm/three-orbit-controls@82.1.0/index.min.js"></script>
-    <title>MMD 3Dモデルの表示</title>
+         <title>MMD 3Dモデルの表示</title>
   </head>
   <body>
     <!-- MMDが描画されるHTML要素 -->
@@ -34,6 +33,14 @@
       // レスポンシブル対応 div要素の幅を取得（960px）し、数値（960）のみを取り出す
       let canvasSizeW = parseInt( window.getComputedStyle( document.getElementById( 'webgl' ) ).width );
       let canvasSizeH = parseInt( window.getComputedStyle( document.getElementById( 'webgl' ) ).width ) * 540 / 960;
+
+      let rot= 0;//角度
+      let mouseX = 0;//マウス座標
+
+      // マウス座標はマウスが動いた時のみ取得できる
+      document.addEventListener("mousemove", (event) => {
+        mouseX = event.pageX;
+      });
   //***********************************************************************************************
   // メインプログラム
   //***********************************************************************************************
@@ -133,9 +140,6 @@
         // 画角を決める アスペクト比 16:9 における焦点距離(35 mm判相当)と垂直画角は以下の通り
         // 24 mm = 45.75、 35 mm = 32.27、50 mm = 22.90
         camera = new THREE.PerspectiveCamera( 22.9, canvasSizeW / canvasSizeH, 0.1, 20 );
-        // OrbitControls を使用するための設定
-        // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
-        controls = new THREE.OrbitControls(camera, renderer.domElement); 
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
         // (Constructor) PlaneGeometry(width : Float, height : Float, widthSegments : Integer, heightSegments : Integer) : BufferGeometry
@@ -215,8 +219,25 @@
     // (3)レンダリング (レンダリングループ)
     //-----------------------------------------------------------------------------------------------
       function sceneRender() {
+        
+        // マウスの位置に応じて角度を設定
+        // マウスのX座標がステージの幅の何%の位置にあるか調べてそれを360度で乗算する
+        const targetRot = (mouseX / window.innerWidth) * 360;
+        // イージングの公式を用いて滑らかにする
+        // 値 += (目標値 - 現在の値) * 減速値
+        rot += (targetRot - rot) * 0.02;
+
+        // ラジアンに変換する
+        const radian = (rot * Math.PI) / 180;
+        // 角度に応じてカメラの位置を設定
+        camera.position.x = 1000 * Math.sin(radian);
+        camera.position.z = 1000 * Math.cos(radian);
+        // 原点方向を見つめる
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+
         // (Constructor) window.requestAnimationFrame( callback )
         window.requestAnimationFrame( sceneRender );
+
         // OutlineEffectの適用
         // (Method) .render ( scene : Object3D, camera : Camera ) : null
         effect.render( scene, camera );
