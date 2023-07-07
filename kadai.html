@@ -12,7 +12,8 @@
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/effects/OutlineEffect.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/CCDIKSolver.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/MMDPhysics.js"></script>
-    <script src="https://stayawhile.site/js/OrbitControls_r131.js"></script>
+      <script src="https://unpkg.com/three@0.137.4/examples/js/controls/OrbitControls.js"></script>
+
          <title>MMD 3Dモデルの表示</title>
   </head>
   <body>
@@ -138,7 +139,7 @@
         
         // OrbitControls を使用するための設定
         // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
-        //controls = new THREE.OrbitControls( camera, renderer.domElement );
+        controls = new THREE.OrbitControls( camera, renderer.domElement );
         
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
