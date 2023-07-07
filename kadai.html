@@ -12,6 +12,7 @@
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/effects/OutlineEffect.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/CCDIKSolver.js"></script>
      <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/MMDPhysics.js"></script>
+    <script src="https://stayawhile.site/js/OrbitControls_r131.js"></script>
          <title>MMD 3Dモデルの表示</title>
   </head>
   <body>
@@ -134,6 +135,11 @@
         // 画角を決める アスペクト比 16:9 における焦点距離(35 mm判相当)と垂直画角は以下の通り
         // 24 mm = 45.75、 35 mm = 32.27、50 mm = 22.90
         camera = new THREE.PerspectiveCamera( 22.9, canvasSizeW / canvasSizeH, 0.1, 20 );
+        
+        // OrbitControls を使用するための設定
+        // (Constructor) OrbitControls( object : Camera, domElement : HTMLDOMElement ) : Controls
+        controls = new THREE.OrbitControls( camera, renderer.domElement );
+        
         // 床を作成
         // (Constructor) Mesh( geometry : BufferGeometry, material : Material ) : Object3D
         // (Constructor) PlaneGeometry(width : Float, height : Float, widthSegments : Integer, heightSegments : Integer) : BufferGeometry
@@ -194,7 +200,7 @@
             camera.position.copy( new THREE.Vector3( 0, 0.5 * BOUNDING_BOX.max.y, 4.5 ) );
             // 視点を設定する
             // (Property) .target : Vector3
-            controls.target = new THREE.Vector3( 0, 5, 0 );
+            controls.target = new THREE.Vector3( 0, 0.5 * BOUNDING_BOX.max.y, 0 );
             // スポットライト光源のターゲットの位置を設定
             // (Property) .target : Object3D
             // (Property) .position : Vector3
@@ -210,15 +216,6 @@
     // (3)レンダリング (レンダリングループ)
     //-----------------------------------------------------------------------------------------------
       function sceneRender() {
-        rot += 0.5; // 毎フレーム角度を0.5度ずつ足していく
-        // ラジアンに変換する
-        const radian = (rot * Math.PI) / 180;
-        // 角度に応じてカメラの位置を設定
-        camera.position.x = 1000 * Math.sin(radian);
-        camera.position.z = 1000 * Math.cos(radian);
-        // 原点方向を見つめるTHREE.Vector3( 0, 0.5 * BOUNDING_BOX.max.y, 0 )
-        camera.lookAt(new THREE.Vector3( 0, 5, 0 ));
-
         // (Constructor) window.requestAnimationFrame( callback )
         window.requestAnimationFrame( sceneRender );
 
